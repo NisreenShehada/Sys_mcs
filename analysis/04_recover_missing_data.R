@@ -49,21 +49,78 @@ missing_doi_after_full_endnote_df <- included_with_doi_by_id %>%
 cat("Rows still missing DOI:",
     nrow(missing_doi_after_full_endnote_df), "\n")
 
-# 10. Checking for duplicates:
-sum(duplicated(included_with_doi_by_id$rec_number))
-sum(duplicated(missing_doi_after_full_endnote_df$record_index))
-included_with_doi_by_id <- included_with_doi_by_id %>%
-  mutate(title_clean = tolower(trimws(title_screening)))
-sum(duplicated(included_with_doi_by_id$title_clean))
+# 10. Check duplicated DOIs
 
-# 11. Inspect duplicates
-included_with_doi_by_id %>%
-  count(title_clean) %>%
+doi_duplicate_summary <- included_with_doi_by_id %>%
+
+  filter(!is.na(doi)) %>%
+
+  count(doi) %>%
+
   filter(n > 1) %>%
-  arrange(desc(n))
 
-included_with_doi_by_id %>%
-  filter(title_clean == "some_example_title")
-# 10. Save updated DOI dataset
-write_csv(included_with_doi_by_id, output_csv_path)
-saveRDS(included_with_doi_by_id, output_rds_path)
+  summarise(
+
+    unique_duplicate_dois = n(),
+
+    total_rows_with_duplicate_dois = sum(n),
+
+    rows_to_remove = sum(n) - n()
+
+  )
+
+print(doi_duplicate_summary)
+
+# 11. Inspect duplicated DOI records
+
+duplicated_doi_records <- included_with_doi_by_id %>%
+
+  filter(!is.na(doi)) %>%
+
+  group_by(doi) %>%
+
+  filter(n() > 1) %>%
+
+  ungroup() %>%
+
+  arrange(doi)
+
+View(duplicated_doi_records)
+
+# 12. Remove duplicated DOIs, keeping one row per DOI
+
+# Keep all rows without DOI because they cannot be deduplicated by DOI
+
+included_with_doi_dedup_df <- included_with_doi_by_id %>%
+
+  filter(is.na(doi)) %>%
+
+  bind_rows(
+
+    included_with_doi_by_id %>%
+
+      filter(!is.na(doi)) %>%
+
+      distinct(doi, .keep_all = TRUE)
+
+  )
+
+# 13. Check row counts after deduplication
+
+cat("Rows before DOI deduplication:",
+
+    nrow(included_with_doi_by_id), "\n")
+
+cat("Rows after DOI deduplication:",
+
+    nrow(included_with_doi_dedup_df), "\n")
+
+cat("Rows removed:",
+
+    nrow(included_with_doi_by_id) - nrow(included_with_doi_dedup_df), "\n")
+
+# 14. Save deduplicated DOI dataset
+
+write_csv(included_with_doi_dedup_df, output_csv_path)
+
+saveRDS(included_with_doi_dedup_df, output_rds_path)
