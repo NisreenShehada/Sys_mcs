@@ -1,4 +1,3 @@
-rm(list = ls())
 # 1. Load packages
 library(dplyr)
 library(readr)

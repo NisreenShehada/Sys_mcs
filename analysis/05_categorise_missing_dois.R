@@ -30,6 +30,26 @@ missing_doi_urls_long <- missing_doi_df %>%
     url_lower = str_to_lower(url)
   )
 
+# Look into URLs
+missing_doi_urls_long %>%
+  select(
+    title_screening,
+    url
+  ) %>%
+  print(n = 20)
+
+missing_doi_urls_long %>%
+  select(
+    record_index,
+    title_screening,
+    url
+  ) %>%
+  View()
+
+# Read full length of th urls
+missing_doi_urls_long$url[]
+
+
 # 6. Categorise URL types
 missing_doi_urls_long <- missing_doi_urls_long %>%
   mutate(
@@ -52,26 +72,88 @@ missing_doi_url_type_summary <- missing_doi_urls_long %>%
 
 print(missing_doi_url_type_summary)
 
-# 8. Extract Ovid database patterns
-ovid_patterns_df <- missing_doi_urls_long %>%
-  filter(str_detect(url_lower, "ovidsp")) %>%
+# 8. updated categorization:
+missing_doi_url_patterns <- missing_doi_urls_long %>%
+
   mutate(
-    ovid_database = str_extract(url, "D=[^&]+"),
-    ovid_accession_number = str_extract(url, "AN=[^&]+"),
-    database_group = case_when(
-      str_detect(ovid_database, "cagh") ~ "CAB Abstracts",
-      str_detect(ovid_database, "emctr") ~ "Embase Conference Abstracts",
-      str_detect(ovid_database, "emed") ~ "Embase",
-      TRUE ~ "Other"
+
+    url_lower = tolower(url),
+
+    url_pattern = case_when(
+
+      str_detect(url_lower, "do=") ~
+
+        "Malformed DOI metadata record",
+
+      str_detect(url_lower, "d=emctr&an") ~
+
+        "Embase conference abstract accession record",
+
+      str_detect(url_lower, "d=emed[0-9]+&an") ~
+
+        "Embase indexed accession record",
+
+      str_detect(url_lower, "d=cagh[0-9]*&an") ~
+
+        "CAB Abstracts accession record",
+
+      str_detect(url_lower, "d=pmnm[0-9]*&an") ~
+
+        "Ovid MEDLINE/PubMed accession record",
+
+      str_detect(url_lower, "d=med[0-9]*&an|d=medp&an|d=medl&an") ~
+
+        "Ovid MEDLINE accession record",
+
+      str_detect(url_lower, "d=empp&an") ~
+
+        "Ovid Embase publication record",
+
+      str_detect(url_lower, "primo-explore|openurl|exlibrisgroup") ~
+
+        "Library resolver metadata link",
+
+      TRUE ~
+
+        "Other / unclear URL pattern"
+
+    ),
+
+    likely_reason = case_when(
+
+      str_detect(url_lower, "do=") ~
+
+        "Malformed DOI-like metadata present but not a valid article DOI",
+
+      str_detect(url_lower, "d=emctr&an") ~
+
+        "Conference abstract record; DOI may not exist or may not be exported",
+
+      str_detect(url_lower, "d=cagh[0-9]*&an") ~
+
+        "CAB/Global Health record uses accession number rather than DOI",
+
+      str_detect(url_lower, "d=emed[0-9]+&an|d=pmnm[0-9]*&an|d=med[0-9]*&an|d=medp&an|d=medl&an|d=empp&an") ~
+
+        "Ovid record uses database accession number rather than DOI",
+
+      str_detect(url_lower, "primo-explore|openurl|exlibrisgroup") ~
+
+        "Library resolver contains bibliographic metadata but no DOI",
+
+      TRUE ~
+
+        "Needs manual review"
+
     )
+
   )
 
-# 9. Summarise Ovid database groups
-ovid_database_summary <- ovid_patterns_df %>%
-  count(database_group, sort = TRUE) %>%
-  mutate(percent = round(n / sum(n) * 100, 1))
+# 9. Summarise URL types
+missing_doi_url_patterns %>%
 
-print(ovid_database_summary)
+  count(url_pattern, likely_reason, sort = TRUE)
+
 
 # 10. Optional: classify broad study type from title
 missing_doi_study_type_summary <- missing_doi_df %>%
@@ -95,25 +177,35 @@ missing_doi_study_type_summary <- missing_doi_df %>%
 print(missing_doi_study_type_summary)
 
 # 11. Create final categorised missing DOI table
-missing_doi_categorised_df <- missing_doi_df %>%
-  mutate(
-    url_lower = str_to_lower(coalesce(url, "")),
-    missing_doi_reason = case_when(
-      str_detect(url_lower, "ovidsp") ~ "Ovid database record without DOI",
-      str_detect(url_lower, "primo-explore|exlibrisgroup") ~ "Library resolver record without DOI",
-      url_lower == "" ~ "No URL recorded",
-      TRUE ~ "Other / needs manual review"
-    )
-  )
+missing_doi_audit_df <- missing_doi_url_patterns %>%
+  select(
+
+    record_index,
+
+    rec_number,
+
+    title_screening,
+
+    title_endnote,
+
+    year,
+
+    doi,
+
+    url,
+
+    url_pattern,
+
+    likely_reason
+
+  ) %>%
+
+
+
+  arrange(url_pattern, title_screening)
 
 # 12. Save outputs
 write_csv(missing_doi_categorised_df, missing_doi_csv_path)
-write_csv(missing_doi_url_type_summary, missing_doi_url_type_summary_path)
-write_csv(ovid_database_summary, missing_doi_ovid_database_summary_path)
-write_csv(missing_doi_study_type_summary, missing_doi_study_type_summary_path)
-
-cat("Saved missing DOI categorised file:", missing_doi_csv_path, "\n")
-cat("Saved URL type summary:", missing_doi_url_type_summary_path, "\n")
-cat("Saved Ovid database summary:", missing_doi_ovid_database_summary_path, "\n")
-cat("Saved study type summary:", missing_doi_study_type_summary_path, "\n")
+write_csv(missing_doi_audit_df,"analysis/data-derived/missing_doi_audit_table.csv")
+saveRDS(missing_doi_audit_df, "analysis/data-derived/missing_doi_audit_table.rds")
 

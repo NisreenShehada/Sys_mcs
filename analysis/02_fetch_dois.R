@@ -162,3 +162,4 @@ cat("Rows with DOI:",
 
 write_csv(included_with_doi_df, output_csv_path)
 saveRDS(included_with_doi_df, output_rds_path)
+
