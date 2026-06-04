@@ -12,7 +12,6 @@ source("R/endnote_helpers.R")
 # 3. Define Paths
 included_rds_path <- "analysis/data-derived/included_studies.rds"
 endnote_enl_path <- "~/Desktop/PhD files /1st year/Systematic review /endnote/Imported References.enl"
-
 output_csv_path <- "analysis/data-derived/included_studies_with_doi.csv"
 output_rds_path <- "analysis/data-derived/included_studies_with_doi.rds"
 

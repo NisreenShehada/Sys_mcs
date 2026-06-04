@@ -1,12 +1,18 @@
 # 1. Load packages
+install.packages("DBI")
+
+install.packages("RSQLite")
+
+library(DBI)
+library(RSQLite)
 library(dplyr)
 library(readr)
 library(stringr)
 library(tidyr)
 
+
 # 2. Define paths
 input_rds_path <- "analysis/data-derived/included_studies_with_doi_full_endnote.rds"
-
 missing_doi_csv_path <- "analysis/data-derived/missing_doi_categorised.csv"
 missing_doi_url_type_summary_path <- "analysis/data-derived/missing_doi_url_type_summary.csv"
 missing_doi_ovid_database_summary_path <- "analysis/data-derived/missing_doi_ovid_database_summary.csv"
@@ -18,6 +24,11 @@ df <- readRDS(input_rds_path)
 # 4. Keep rows still missing DOI
 missing_doi_df <- df %>%
   filter(is.na(doi))
+
+missing_doi_df <- df %>%
+  filter(is.na(doi))
+
+head(missing_doi_df)
 
 cat("Rows missing DOI:", nrow(missing_doi_df), "\n")
 
@@ -74,13 +85,9 @@ print(missing_doi_url_type_summary)
 
 # 8. updated categorization:
 missing_doi_url_patterns <- missing_doi_urls_long %>%
-
   mutate(
-
     url_lower = tolower(url),
-
     url_pattern = case_when(
-
       str_detect(url_lower, "do=") ~
 
         "Malformed DOI metadata record",
@@ -155,7 +162,7 @@ missing_doi_url_patterns %>%
   count(url_pattern, likely_reason, sort = TRUE)
 
 
-# 10. Optional: classify broad study type from title
+# 10. Classify broad study type from title
 missing_doi_study_type_summary <- missing_doi_df %>%
   mutate(
     title_lower = str_to_lower(coalesce(title_screening, "")),
@@ -203,6 +210,61 @@ missing_doi_audit_df <- missing_doi_url_patterns %>%
 
 
   arrange(url_pattern, title_screening)
+
+
+con <- dbConnect(SQLite(), full_endnote_path)
+dbListTables(con)
+dbDisconnect(con)
+
+# 4. Read EndNote references
+refs_df <- read_endnote_refs(full_endnote_path)
+refs_doi_df <- refs_df %>% filter(id %in% missing_doi_df$rec_number)
+
+head(refs_doi_df)
+
+# updated summary
+
+missing_doi_chain_summary <- missing_doi_audit_df %>%
+
+  mutate(
+
+    url_lower = tolower(url),
+
+
+
+    url_chain_pattern = case_when(
+
+      str_detect(url_lower, "d=emctr&an") ~ "D=emctr&AN (Embase conference abstract)",
+
+      str_detect(url_lower, "d=emed[0-9]+&an") ~ "D=emedXX&AN (Embase indexed record)",
+
+      str_detect(url_lower, "d=cagh[0-9]*&an") ~ "D=cagh&AN (CAB Abstracts accession record)",
+
+      str_detect(url_lower, "d=med[0-9]*&an") ~ "D=medXX&AN (MEDLINE accession record)",
+
+      str_detect(url_lower, "d=pmnm[0-9]*&an") ~ "D=pmnm&AN (PubMed/MEDLINE record)",
+
+      str_detect(url_lower, "d=empp&an") ~ "D=empp&AN (Embase publication record)",
+
+      str_detect(url_lower, "do=") ~ "DO= field present (Malformed DOI metadata)",
+
+      str_detect(url_lower, "primo-explore|openurl") ~ "Library resolver / OpenURL link",
+
+      TRUE ~ "Other / unclear"
+
+    )
+
+  ) %>%
+
+  count(url_chain_pattern, sort = TRUE) %>%
+
+  mutate(
+
+    percent = round(n / sum(n) * 100, 1)
+
+  )
+
+missing_doi_chain_summary
 
 # 12. Save outputs
 write_csv(missing_doi_categorised_df, missing_doi_csv_path)
